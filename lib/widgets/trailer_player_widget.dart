@@ -31,7 +31,7 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
   @override
   void initState() {
     super.initState();
-    if (kIsWeb) _enterBrowserFullscreen();
+    if (kIsWeb) _enterFullscreen();
     _initializePlayer(widget.trailerUrl);
   }
 
@@ -40,60 +40,35 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
       url,
       videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
     );
-
-    try {
-      await _videoController.initialize();
-      _createChewieController();
-      _videoController.addListener(_checkTrailerEnd);
-      await _videoController.play();
-
-      setState(() {
-        _isInitializing = false;
-      });
-    } catch (e) {
-      debugPrint('Video player failed to initialize: $e');
-    }
-  }
-
-  void _createChewieController() {
+    await _videoController.initialize();
     _chewieController?.dispose();
     _chewieController = ChewieController(
       videoPlayerController: _videoController,
       autoPlay: true,
       looping: false,
       allowFullScreen: false,
-      allowPlaybackSpeedChanging: true,
       showControls: true,
-      aspectRatio: _videoController.value.aspectRatio > 0
-          ? _videoController.value.aspectRatio
-          : 16 / 9,
+      aspectRatio: _videoController.value.aspectRatio,
     );
+    _videoController.addListener(() {
+      if (_videoController.value.position >= _videoController.value.duration &&
+          !_videoController.value.isPlaying &&
+          mounted &&
+          !_showEndScreen) {
+        setState(() => _showEndScreen = true);
+      }
+    });
+    setState(() => _isInitializing = false);
   }
 
-  void _checkTrailerEnd() {
-    if (_videoController.value.position >= _videoController.value.duration &&
-        !_videoController.value.isPlaying &&
-        mounted &&
-        !_showEndScreen) {
-      setState(() {
-        _showEndScreen = true;
-      });
-    }
-  }
-
-  void _enterBrowserFullscreen() {
-    final html.Element? docElm = html.document.documentElement;
-    if (docElm != null) {
-      docElm.requestFullscreen();
-    }
+  void _enterFullscreen() {
+    final doc = html.document.documentElement;
+    if (doc?.requestFullscreen != null) doc!.requestFullscreen();
   }
 
   @override
   void dispose() {
-    if (kIsWeb) {
-      html.document.exitFullscreen();
-    }
-    _videoController.removeListener(_checkTrailerEnd);
+    if (kIsWeb) html.document.exitFullscreen();
     _videoController.dispose();
     _chewieController?.dispose();
     super.dispose();
@@ -101,25 +76,17 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isLandscape = size.width > size.height;
+    final sz = MediaQuery.of(context).size;
+    final isLandscape = sz.width > sz.height;
 
-    Widget videoContent = _isInitializing ||
-            !_videoController.value.isInitialized ||
-            _chewieController == null
+    Widget player = _isInitializing || _chewieController == null
         ? const Center(child: CircularProgressIndicator())
         : Stack(
             fit: StackFit.expand,
             children: [
-              Center(
-                child: SizedBox.expand(
-                  child: Chewie(controller: _chewieController!),
-                ),
-              ),
+              Chewie(controller: _chewieController!),
               if (_showEndScreen)
-                EndScreenWidget(
-                  onWatchFull: widget.onWatchFull,
-                ),
+                EndScreenWidget(onWatchFull: widget.onWatchFull),
               Positioned(
                 top: 10,
                 right: 10,
@@ -132,23 +99,23 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
           );
 
     if (kIsWeb && !isLandscape) {
-      videoContent = RotatedBox(
+      player = RotatedBox(
         quarterTurns: 1,
         child: SizedBox(
-          width: size.height,
-          height: size.width,
+          width: sz.height,
+          height: sz.width,
           child: FittedBox(
             fit: BoxFit.cover,
             child: SizedBox(
-              width: size.width,
-              height: size.height,
-              child: videoContent,
+              width: sz.width,
+              height: sz.height,
+              child: player,
             ),
           ),
         ),
       );
     }
 
-    return Scaffold(body: videoContent);
+    return Scaffold(body: player);
   }
 }
