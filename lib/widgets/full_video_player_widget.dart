@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -122,31 +123,50 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _isInitializing || !_videoController.value.isInitialized || _chewieController == null
-          ? const Center(child: CircularProgressIndicator())
-          : Stack(
-              fit: StackFit.expand,
-              children: [
-                Center(
-                  child: SizedBox.expand(
-                    child: Chewie(controller: _chewieController!),
+    final size = MediaQuery.of(context).size;
+    final isLandscape = size.width > size.height;
+
+    Widget videoContent = _isInitializing ||
+            !_videoController.value.isInitialized ||
+            _chewieController == null
+        ? const Center(child: CircularProgressIndicator())
+        : Stack(
+            fit: StackFit.expand,
+            children: [
+              Center(
+                child: SizedBox.expand(
+                  child: Chewie(controller: _chewieController!),
+                ),
+              ),
+              if (_showExit)
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white, size: 24),
+                    onPressed: () async {
+                      await _clearPlaybackPosition();
+                      widget.onExit();
+                    },
                   ),
                 ),
-                if (_showExit)
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white, size: 24),
-                      onPressed: () async {
-                        await _clearPlaybackPosition();
-                        widget.onExit();
-                      },
-                    ),
-                  ),
-              ],
-            ),
-    );
+            ],
+          );
+
+    if (kIsWeb && !isLandscape) {
+      // Rotate video 90 degrees on web if in portrait mode
+      videoContent = Center(
+        child: Transform.rotate(
+          angle: 3.14159 / 2, // 90 degrees in radians
+          child: SizedBox(
+            width: size.height,
+            height: size.width,
+            child: videoContent,
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(body: videoContent);
   }
 }
