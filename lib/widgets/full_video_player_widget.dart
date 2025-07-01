@@ -42,7 +42,6 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
     try {
       await _videoController.initialize();
 
-      // Resume playback from saved position
       final prefs = await SharedPreferences.getInstance();
       final savedMillis = prefs.getInt(_resumeKey) ?? 0;
       final savedPosition = Duration(milliseconds: savedMillis);
@@ -104,7 +103,7 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _savePlaybackPosition(); // Just in case
+    _savePlaybackPosition();
     _videoController.removeListener(_checkVideoEnd);
     _videoController.dispose();
     _chewieController?.dispose();
@@ -113,10 +112,10 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      _savePlaybackPosition();
-    }
-    if (state == AppLifecycleState.detached || state == AppLifecycleState.hidden) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
       _savePlaybackPosition();
     }
   }
@@ -154,14 +153,18 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
           );
 
     if (kIsWeb && !isLandscape) {
-      // Rotate video 90 degrees on web if in portrait mode
-      videoContent = Center(
-        child: Transform.rotate(
-          angle: 3.14159 / 2, // 90 degrees in radians
-          child: SizedBox(
-            width: size.height,
-            height: size.width,
-            child: videoContent,
+      videoContent = RotatedBox(
+        quarterTurns: 1,
+        child: SizedBox(
+          width: size.height,
+          height: size.width,
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: size.width,
+              height: size.height,
+              child: videoContent,
+            ),
           ),
         ),
       );

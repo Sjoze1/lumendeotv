@@ -120,14 +120,18 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
           );
 
     if (kIsWeb && !isLandscape) {
-      // Rotate video 90 degrees on web if in portrait mode
-      videoContent = Center(
-        child: Transform.rotate(
-          angle: 3.14159 / 2, // 90 degrees in radians
-          child: SizedBox(
-            width: size.height,
-            height: size.width,
-            child: videoContent,
+      videoContent = RotatedBox(
+        quarterTurns: 1,
+        child: SizedBox(
+          width: size.height,
+          height: size.width,
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: size.width,
+              height: size.height,
+              child: videoContent,
+            ),
           ),
         ),
       );
