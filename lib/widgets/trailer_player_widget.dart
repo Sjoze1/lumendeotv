@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'dart:html' as html;
 
 import '../widgets/end_screen_widget.dart';
 
@@ -30,6 +31,7 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) _enterBrowserFullscreen();
     _initializePlayer(widget.trailerUrl);
   }
 
@@ -53,17 +55,6 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
     }
   }
 
-  void _checkTrailerEnd() {
-    if (_videoController.value.position >= _videoController.value.duration &&
-        !_videoController.value.isPlaying &&
-        mounted &&
-        !_showEndScreen) {
-      setState(() {
-        _showEndScreen = true;
-      });
-    }
-  }
-
   void _createChewieController() {
     _chewieController?.dispose();
     _chewieController = ChewieController(
@@ -79,8 +70,29 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
     );
   }
 
+  void _checkTrailerEnd() {
+    if (_videoController.value.position >= _videoController.value.duration &&
+        !_videoController.value.isPlaying &&
+        mounted &&
+        !_showEndScreen) {
+      setState(() {
+        _showEndScreen = true;
+      });
+    }
+  }
+
+  void _enterBrowserFullscreen() {
+    final html.Element? docElm = html.document.documentElement;
+    if (docElm != null) {
+      docElm.requestFullscreen();
+    }
+  }
+
   @override
   void dispose() {
+    if (kIsWeb) {
+      html.document.exitFullscreen();
+    }
     _videoController.removeListener(_checkTrailerEnd);
     _videoController.dispose();
     _chewieController?.dispose();

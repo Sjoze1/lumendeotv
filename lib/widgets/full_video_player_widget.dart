@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:html' as html;
 
 class FullVideoPlayerWidget extends StatefulWidget {
   final String fullVideoUrl;
@@ -30,6 +31,7 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (kIsWeb) _enterBrowserFullscreen();
     _initializePlayer(widget.fullVideoUrl);
   }
 
@@ -51,7 +53,6 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
       }
 
       _createChewieController();
-
       _videoController.addListener(_checkVideoEnd);
       await _videoController.play();
 
@@ -100,6 +101,13 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
     await prefs.remove(_resumeKey);
   }
 
+  void _enterBrowserFullscreen() {
+    final html.Element? docElm = html.document.documentElement;
+    if (docElm != null) {
+      docElm.requestFullscreen();
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -107,6 +115,9 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
     _videoController.removeListener(_checkVideoEnd);
     _videoController.dispose();
     _chewieController?.dispose();
+    if (kIsWeb) {
+      html.document.exitFullscreen();
+    }
     super.dispose();
   }
 
