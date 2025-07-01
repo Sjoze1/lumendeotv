@@ -70,7 +70,7 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
       videoPlayerController: _videoController,
       autoPlay: true,
       looping: false,
-      allowFullScreen: false,
+      allowFullScreen: true,
       allowPlaybackSpeedChanging: true,
       showControls: true,
       aspectRatio: _videoController.value.aspectRatio > 0
