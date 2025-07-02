@@ -48,9 +48,10 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
       videoPlayerController: _videoController,
       autoPlay: true,
       looping: false,
-      allowFullScreen: true, // ✅ Enable fullscreen
+      allowFullScreen: true,
       showControls: true,
       aspectRatio: _videoController.value.aspectRatio,
+      allowPlaybackSpeedChanging: true,
     );
 
     _videoController.addListener(() {
@@ -84,25 +85,35 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
   Widget build(BuildContext context) {
     final sz = MediaQuery.of(context).size;
     final isLandscape = sz.width > sz.height;
+    final isMobileWeb = kIsWeb && sz.width < 600;
+
+    Widget chewiePlayer = _chewieController == null
+        ? const SizedBox.shrink()
+        : isMobileWeb
+            ? Transform.scale(
+                scale: 0.8,
+                child: Chewie(controller: _chewieController!),
+              )
+            : Chewie(controller: _chewieController!);
 
     Widget player = _isInitializing || _chewieController == null
         ? const Center(child: CircularProgressIndicator())
         : Stack(
             fit: StackFit.expand,
             children: [
-              // ✅ Background image
+              // Background image
               Image.asset(
                 'lib/assets/plainlumendeobackground.jpg',
                 fit: BoxFit.cover,
                 width: double.infinity,
                 height: double.infinity,
               ),
-              // ✅ Video Player
-              Chewie(controller: _chewieController!),
-              // ✅ End screen overlay
+              // Chewie video player
+              chewiePlayer,
+              // End screen overlay
               if (_showEndScreen)
                 EndScreenWidget(onWatchFull: widget.onWatchFull),
-              // ✅ Exit button
+              // Exit button
               Positioned(
                 top: 10,
                 right: 10,
@@ -114,7 +125,7 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
             ],
           );
 
-    // ✅ Optional rotation logic for portrait devices
+    // Rotate player for portrait mobile web
     if (kIsWeb && !isLandscape) {
       player = RotatedBox(
         quarterTurns: 1,
