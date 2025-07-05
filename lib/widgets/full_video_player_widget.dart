@@ -19,19 +19,17 @@ class FullVideoPlayerWidget extends StatefulWidget {
   State<FullVideoPlayerWidget> createState() => _FullVideoPlayerWidgetState();
 }
 
-class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with WidgetsBindingObserver {
+class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> {
   late VideoPlayerController _videoController;
   ChewieController? _chewieController;
   bool _isInitializing = true;
-  bool _showExit = false;
+  bool _enteredFullscreen = false;
 
   final String _resumeKey = 'full_video_resume_position';
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    if (kIsWeb) _enterBrowserFullscreen();
     _initializePlayer(widget.fullVideoUrl);
   }
 
@@ -41,53 +39,46 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
       videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
     );
 
-    try {
-      await _videoController.initialize();
+    await _videoController.initialize();
 
-      final prefs = await SharedPreferences.getInstance();
-      final savedMillis = prefs.getInt(_resumeKey) ?? 0;
-      final savedPosition = Duration(milliseconds: savedMillis);
+    final prefs = await SharedPreferences.getInstance();
+    final savedMillis = prefs.getInt(_resumeKey) ?? 0;
+    final savedPosition = Duration(milliseconds: savedMillis);
 
-      if (savedPosition < _videoController.value.duration) {
-        await _videoController.seekTo(savedPosition);
-      }
-
-      _createChewieController();
-      _videoController.addListener(_checkVideoEnd);
-      await _videoController.play();
-
-      setState(() {
-        _isInitializing = false;
-      });
-    } catch (e) {
-      debugPrint('Full video player failed to initialize: $e');
+    await _videoController.play(); // 🔄 Start playing immediately
+    if (savedPosition < _videoController.value.duration) {
+      await _videoController.seekTo(savedPosition); // 🔄 Then seek
     }
-  }
 
-  void _createChewieController() {
     _chewieController?.dispose();
     _chewieController = ChewieController(
       videoPlayerController: _videoController,
       autoPlay: true,
       looping: false,
       allowFullScreen: true,
-      allowPlaybackSpeedChanging: true,
       showControls: true,
-      aspectRatio: _videoController.value.aspectRatio > 0
-          ? _videoController.value.aspectRatio
-          : 16 / 9,
+      aspectRatio: _videoController.value.aspectRatio,
+      allowPlaybackSpeedChanging: true,
     );
-  }
 
-  void _checkVideoEnd() {
-    final pos = _videoController.value.position;
-    final dur = _videoController.value.duration;
+    _videoController.addListener(() async {
+      if (_videoController.value.isPlaying && !_enteredFullscreen && kIsWeb) {
+        _enteredFullscreen = true;
 
-    if (pos >= dur && !_showExit && mounted) {
-      setState(() {
-        _showExit = true;
-      });
-    }
+        final doc = html.document.documentElement;
+        if (doc?.requestFullscreen != null) {
+          await doc!.requestFullscreen();
+        }
+
+        try {
+          await html.window.screen?.orientation?.lock('landscape');
+        } catch (_) {
+          // iOS/Safari silently fails
+        }
+      }
+    });
+
+    setState(() => _isInitializing = false);
   }
 
   Future<void> _savePlaybackPosition() async {
@@ -101,18 +92,9 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
     await prefs.remove(_resumeKey);
   }
 
-  void _enterBrowserFullscreen() {
-    final html.Element? docElm = html.document.documentElement;
-    if (docElm != null) {
-      docElm.requestFullscreen();
-    }
-  }
-
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _savePlaybackPosition();
-    _videoController.removeListener(_checkVideoEnd);
     _videoController.dispose();
     _chewieController?.dispose();
     if (kIsWeb) {
@@ -122,65 +104,89 @@ class _FullVideoPlayerWidgetState extends State<FullVideoPlayerWidget> with Widg
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.hidden) {
-      _savePlaybackPosition();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isLandscape = size.width > size.height;
+    final sz = MediaQuery.of(context).size;
+    final isMobileWeb = kIsWeb && sz.width < 600;
 
-    Widget videoContent = _isInitializing ||
-            !_videoController.value.isInitialized ||
-            _chewieController == null
-        ? const Center(child: CircularProgressIndicator())
-        : Stack(
-            fit: StackFit.expand,
-            children: [
-              Center(
-                child: SizedBox.expand(
-                  child: Chewie(controller: _chewieController!),
+    Widget content;
+
+    if (_isInitializing || _chewieController == null) {
+      content = const Center(child: CircularProgressIndicator());
+    } else {
+      content = Container(
+        color: Colors.black,
+        width: double.infinity,
+        height: double.infinity,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: _videoController.value.aspectRatio,
+            child: isMobileWeb
+                ? Transform.scale(
+                    scale: 0.85,
+                    child: Chewie(controller: _chewieController!),
+                  )
+                : Chewie(controller: _chewieController!),
+          ),
+        ),
+      );
+    }
+
+    // Fallback rotation for devices where orientation lock fails
+    if (kIsWeb && sz.height > sz.width) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: RotatedBox(
+          quarterTurns: 1,
+          child: SizedBox(
+            width: sz.height,
+            height: sz.width,
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: sz.width,
+                height: sz.height,
+                child: Stack(
+                  children: [
+                    content,
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () async {
+                          await _clearPlaybackPosition();
+                          widget.onExit();
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              if (_showExit)
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white, size: 24),
-                    onPressed: () async {
-                      await _clearPlaybackPosition();
-                      widget.onExit();
-                    },
-                  ),
-                ),
-            ],
-          );
-
-    if (kIsWeb && !isLandscape) {
-      videoContent = RotatedBox(
-        quarterTurns: 1,
-        child: SizedBox(
-          width: size.height,
-          height: size.width,
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: size.width,
-              height: size.height,
-              child: videoContent,
             ),
           ),
         ),
       );
     }
 
-    return Scaffold(body: videoContent);
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          content,
+          Positioned(
+            top: 10,
+            right: 10,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () async {
+                await _clearPlaybackPosition();
+                widget.onExit();
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
+

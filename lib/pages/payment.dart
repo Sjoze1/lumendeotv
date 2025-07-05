@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 
 class MpesaPaymentPage extends StatefulWidget {
   final VoidCallback onSuccess;
@@ -20,6 +21,8 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
   final TextEditingController _phoneController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+  Timer? _pollingTimer;
+  String? _checkoutRequestId;
 
   Future<void> _submitPayment() async {
     final phone = _phoneController.text.trim();
@@ -50,8 +53,11 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
       final data = jsonDecode(response.body);
       print('Response: $data');
 
-      if (response.statusCode == 200 && data['status'] == 'success') {
-        widget.onSuccess();
+      if (response.statusCode == 200 &&
+          data['status'] == 'success' &&
+          data['CheckoutRequestID'] != null) {
+        _checkoutRequestId = data['CheckoutRequestID'];
+        _startPollingForPayment();
       } else {
         setState(() {
           _errorMessage = data['message'] ?? 'Payment initiation failed.';
@@ -62,10 +68,42 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
         _errorMessage = 'Network error: $e';
       });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (_errorMessage != null) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
+
+  void _startPollingForPayment() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _checkPaymentStatus();
+    });
+  }
+
+  Future<void> _checkPaymentStatus() async {
+    if (_checkoutRequestId == null) return;
+
+    try {
+      final response = await http.get(Uri.parse(
+        'https://lumendeotv-project-backend.onrender.com/api/mpesa/check-payment?checkoutRequestID=$_checkoutRequestId',
+      ));
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 &&
+          data['status'] == 'COMPLETED') {
+        _pollingTimer?.cancel();
+        widget.onSuccess();
+      }
+    } catch (e) {
+      print('Polling error: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    _phoneController.dispose();
+    super.dispose();
   }
 
   @override
@@ -153,7 +191,7 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
-                          onPressed: widget.onCancel,
+                          onPressed: _isLoading ? null : widget.onCancel,
                           child: const Text(
                             'Cancel',
                             style: TextStyle(color: Colors.white70),

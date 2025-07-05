@@ -115,7 +115,7 @@ Widget build(BuildContext context) {
         Center(
           child: Container(
             padding: const EdgeInsets.all(16.0),
-            color: Colors.black.withOpacity(0.5),
+            color: Colors.white.withOpacity(0.5),
             constraints: const BoxConstraints(maxWidth: 400), // optional max width
             child: _isUploading
                 ? UploadProgressWidget(

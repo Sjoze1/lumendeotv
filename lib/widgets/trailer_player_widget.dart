@@ -27,6 +27,7 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
   ChewieController? _chewieController;
   bool _showEndScreen = false;
   bool _isInitializing = true;
+  bool _enteredFullscreen = false;
 
   @override
   void initState() {
@@ -55,6 +56,26 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
     );
 
     _videoController.addListener(() {
+      if (_videoController.value.isPlaying && !_enteredFullscreen && kIsWeb) {
+        _enteredFullscreen = true;
+
+        // Attempt to request fullscreen
+        final doc = html.document.documentElement;
+        if (doc?.requestFullscreen != null) {
+          doc!.requestFullscreen();
+        }
+
+        // Attempt to lock to landscape
+        try {
+          html.window.screen?.orientation
+              ?.lock('landscape')
+              .then((_) {})
+              .catchError((_) {});
+        } catch (_) {
+          // iOS/Safari will silently fail
+        }
+      }
+
       if (_videoController.value.position >= _videoController.value.duration &&
           !_videoController.value.isPlaying &&
           mounted &&
@@ -84,66 +105,48 @@ class _TrailerPlayerWidgetState extends State<TrailerPlayerWidget> {
   @override
   Widget build(BuildContext context) {
     final sz = MediaQuery.of(context).size;
-    final isLandscape = sz.width > sz.height;
     final isMobileWeb = kIsWeb && sz.width < 600;
 
-    Widget chewiePlayer = _chewieController == null
-        ? const SizedBox.shrink()
-        : isMobileWeb
-            ? Transform.scale(
-                scale: 0.8,
-                child: Chewie(controller: _chewieController!),
-              )
-            : Chewie(controller: _chewieController!);
+    Widget content;
 
-    Widget player = _isInitializing || _chewieController == null
-        ? const Center(child: CircularProgressIndicator())
-        : Stack(
-            fit: StackFit.expand,
-            children: [
-              // Background image
-              Image.asset(
-                'lib/assets/plainlumendeobackground.jpg',
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
-              ),
-              // Chewie video player
-              chewiePlayer,
-              // End screen overlay
-              if (_showEndScreen)
-                EndScreenWidget(onWatchFull: widget.onWatchFull),
-              // Exit button
-              Positioned(
-                top: 10,
-                right: 10,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white, size: 24),
-                  onPressed: widget.onExit,
-                ),
-              ),
-            ],
-          );
-
-    // Rotate player for portrait mobile web
-    if (kIsWeb && !isLandscape) {
-      player = RotatedBox(
-        quarterTurns: 1,
-        child: SizedBox(
-          width: sz.height,
-          height: sz.width,
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: sz.width,
-              height: sz.height,
-              child: player,
-            ),
+    if (_isInitializing || _chewieController == null) {
+      content = const Center(child: CircularProgressIndicator());
+    } else if (_showEndScreen) {
+      content = EndScreenWidget(onWatchFull: widget.onWatchFull);
+    } else {
+      content = Container(
+        color: Colors.black,
+        width: double.infinity,
+        height: double.infinity,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: _videoController.value.aspectRatio,
+            child: isMobileWeb
+                ? Transform.scale(
+                    scale: 0.85,
+                    child: Chewie(controller: _chewieController!),
+                  )
+                : Chewie(controller: _chewieController!),
           ),
         ),
       );
     }
 
-    return Scaffold(body: player);
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          content,
+          Positioned(
+            top: 10,
+            right: 10,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 24),
+              onPressed: widget.onExit,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

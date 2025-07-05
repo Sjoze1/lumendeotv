@@ -19,7 +19,7 @@ class EndScreenWidget extends StatelessWidget {
             child: AspectRatio(
               aspectRatio: 16 / 9,
               child: Image.asset(
-                'lib/assets/Paymentendscreenlumendeo.jpg',
+                'lib/assets/paymentendscreenartful.jpg',
                 fit: BoxFit.contain,
               ),
             ),
