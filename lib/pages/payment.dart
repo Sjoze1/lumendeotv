@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -22,13 +23,16 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
   String? _errorMessage;
 
   Future<void> _submitPayment() async {
-    final phone = _phoneController.text.trim();
-    if (!RegExp(r'^2547\d{8}$').hasMatch(phone)) {
+    final rawPhone = _phoneController.text.trim();
+
+    if (!RegExp(r'^07\d{8}$').hasMatch(rawPhone)) {
       setState(() {
-        _errorMessage = 'Enter valid phone (e.g. 2547....)';
+        _errorMessage = 'Enter a valid Safaricom number starting with 07...';
       });
       return;
     }
+
+    final phone = '254' + rawPhone.substring(1); // Convert 07... → 2547...
 
     setState(() {
       _isLoading = true;
@@ -80,7 +84,7 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
           print('Polling result: $result');
 
           if (result['status'] == 'completed') {
-            widget.onSuccess(); // 🔓 Unlock content
+            widget.onSuccess();
             return;
           } else if (result['status'] == 'failed') {
             setState(() {
@@ -160,12 +164,13 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _phoneController,
-                      keyboardType: TextInputType.phone,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         labelText: 'Phone Number',
                         labelStyle: const TextStyle(color: goldColor),
-                        hintText: 'e.g. 254712345678',
+                        hintText: 'e.g. 0712345678',
                         hintStyle: const TextStyle(color: Colors.white54),
                         enabledBorder: const OutlineInputBorder(
                           borderSide: BorderSide(color: goldColor),
