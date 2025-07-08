@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:async';
 
 class MpesaPaymentPage extends StatefulWidget {
   final VoidCallback onSuccess;
@@ -21,8 +20,6 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
   final TextEditingController _phoneController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
-  Timer? _pollingTimer;
-  String? _checkoutRequestId;
 
   Future<void> _submitPayment() async {
     final phone = _phoneController.text.trim();
@@ -51,13 +48,11 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
       );
 
       final data = jsonDecode(response.body);
-      print('Response: $data');
+      print('STK Push Response: $data');
 
-      if (response.statusCode == 200 &&
-          data['status'] == 'success' &&
-          data['CheckoutRequestID'] != null) {
-        _checkoutRequestId = data['CheckoutRequestID'];
-        _startPollingForPayment();
+      if (response.statusCode == 200 && data['status'] == 'success') {
+        final checkoutRequestId = data['data']['CheckoutRequestID'];
+        _pollPaymentStatus(checkoutRequestId);
       } else {
         setState(() {
           _errorMessage = data['message'] ?? 'Payment initiation failed.';
@@ -67,63 +62,65 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
       setState(() {
         _errorMessage = 'Network error: $e';
       });
-    } finally {
-      if (_errorMessage != null) {
-        setState(() => _isLoading = false);
-      }
     }
   }
 
-  void _startPollingForPayment() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _checkPaymentStatus();
+  Future<void> _pollPaymentStatus(String checkoutRequestId) async {
+    const maxTries = 10;
+    const waitTime = Duration(seconds: 5);
+
+    for (int i = 0; i < maxTries; i++) {
+      try {
+        final response = await http.get(
+          Uri.parse('https://lumendeotv-project-backend.onrender.com/api/mpesa/payment-status/$checkoutRequestId'),
+        );
+
+        if (response.statusCode == 200) {
+          final result = jsonDecode(response.body);
+          print('Polling result: $result');
+
+          if (result['status'] == 'completed') {
+            widget.onSuccess(); // 🔓 Unlock content
+            return;
+          } else if (result['status'] == 'failed') {
+            setState(() {
+              _errorMessage = 'Payment failed: ${result['message'] ?? "Try again."}';
+              _isLoading = false;
+            });
+            return;
+          }
+        }
+      } catch (e) {
+        setState(() {
+          _errorMessage = 'Status check error: $e';
+        });
+        break;
+      }
+
+      await Future.delayed(waitTime);
+    }
+
+    setState(() {
+      _errorMessage = 'Payment confirmation timed out.';
+      _isLoading = false;
     });
-  }
-
-  Future<void> _checkPaymentStatus() async {
-    if (_checkoutRequestId == null) return;
-
-    try {
-      final response = await http.get(Uri.parse(
-        'https://lumendeotv-project-backend.onrender.com/api/mpesa/check-payment?checkoutRequestID=$_checkoutRequestId',
-      ));
-
-      final data = jsonDecode(response.body);
-      if (response.statusCode == 200 &&
-          data['status'] == 'COMPLETED') {
-        _pollingTimer?.cancel();
-        widget.onSuccess();
-      }
-    } catch (e) {
-      print('Polling error: $e');
-    }
-  }
-
-  @override
-  void dispose() {
-    _pollingTimer?.cancel();
-    _phoneController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    const goldColor = Color(0xFFFFD700); // Gold
+    const goldColor = Color(0xFFFFD700);
     const darkColor = Colors.black;
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // Background
           Positioned.fill(
             child: Image.asset(
               'lib/assets/plainlumendeobackground.jpg',
               fit: BoxFit.cover,
             ),
           ),
-
-          // Centered scrollable form container
           Center(
             child: SingleChildScrollView(
               padding: EdgeInsets.only(
@@ -191,7 +188,7 @@ class _MpesaPaymentPageState extends State<MpesaPaymentPage> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
-                          onPressed: _isLoading ? null : widget.onCancel,
+                          onPressed: widget.onCancel,
                           child: const Text(
                             'Cancel',
                             style: TextStyle(color: Colors.white70),
